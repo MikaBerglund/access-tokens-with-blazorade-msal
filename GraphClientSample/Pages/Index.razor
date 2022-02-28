@@ -15,13 +15,15 @@
 
     private GraphQueryModel Model = new GraphQueryModel();
 
-    private string? ResultContent;
-    private Exception? QueryException;
+    private string? ResponseContent;
+    private int? ResponseStatus;
+    private Exception? ResponseException;
+    private string? UserName;
 
     private async Task SendRequestAsync()
     {
-        this.ResultContent = null;
-        this.QueryException = null;
+        this.ResponseContent = null;
+        this.ResponseException = null;
         this.Model.QueryInProgress = true;
         this.StateHasChanged();
 
@@ -32,18 +34,23 @@
             {
                 using(var response = await this.HttpClient.SendAsync(request))
                 {
-                    if(response.IsSuccessStatusCode)
-                    {
-                        this.ResultContent = await response.Content.ReadAsStringAsync();
-                    }
+                    this.ResponseStatus = (int)response.StatusCode;
+                    this.ResponseContent = await response.Content.ReadAsStringAsync();
                 }
             }
+        }
+        catch(Exception ex)
+        {
+            this.ResponseStatus = 500;
+            this.ResponseException = ex;
         }
         finally
         {
             this.Model.QueryInProgress = false;
             this.StateHasChanged();
         }
+
+        await this.HandleLoggedInUserAsync();
     }
 
     private Dictionary<string, object> GetButtonAttributes()
@@ -55,9 +62,46 @@
         }
         return attribs;
     }
+
+    private async Task HandleLoggedInUserAsync()
+    {
+        try
+        {
+            var token = await this.MsalService.AcquireTokenSilentAsync(fallbackToDefaultLoginHint: true);
+            this.UserName = token?.Account?.UserName;
+            if(token?.Scopes?.Count > 0)
+            {
+                this.Model.Scopes = string.Join(",", token.Scopes);
+            }
+            this.StateHasChanged();
+        }
+        catch { }
+    }
+
+    protected async override Task OnAfterRenderAsync(bool firstRender)
+    {
+        if(firstRender)
+        {
+            await this.HandleLoggedInUserAsync();
+        }
+    }
+
 }
 
 <PageTitle>Microsoft Graph Access Sample</PageTitle>
+
+
+@if(this.UserName?.Length > 0)
+{
+    <ul class="nav justify-content-end bg-primary mb-3">
+        <li class="nav-item">
+            <span class="nav-link text-white">Logged in as: @this.UserName</span>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link btn btn-primary text-white" @onclick="async (e) => { await this.MsalService.LogoutAsync(); }">Log Out</button>
+        </li>
+    </ul>
+}
 
 <h1>Microsoft Graph Request Builder</h1>
 
@@ -74,12 +118,21 @@
         </InputSelect>
         <InputText id="request-uri" class="form-control" @bind-Value=this.Model.RequestUri></InputText>
         
-        <button class="btn btn-primary" @attributes=this.GetButtonAttributes() @onclick="async (e) => { await this.SendRequestAsync(); }">Send</button>
+        <button type="submit" class="btn btn-primary" @attributes=this.GetButtonAttributes() @onclick="async (e) => { await this.SendRequestAsync(); }">Send</button>
     </div>
 </EditForm>
 
-@if(this.ResultContent?.Length > 0)
+@if(this.ResponseContent?.Length > 0)
 {
-    <h2>Result</h2>
-    <pre>@this.ResultContent</pre>
+    <h2>Response</h2>
+    <small>Status code: @this.ResponseStatus</small>
+    <div class="mt-3">
+        <code>@this.ResponseContent</code>
+    </div>
+}
+else if(null != this.ResponseException)
+{
+    <h2>Error</h2>
+    <small>Status code: @this.ResponseStatus</small>
+    <pre class="mt-3">@this.ResponseException.ToString()</pre>
 }
