@@ -1,8 +1,85 @@
 ﻿@page "/"
+@inject BlazoradeMsalService MsalService;
+@inject BlazoradeRequestFactory RequestFactory;
+@inject HttpClient HttpClient;
 
-<PageTitle>Index</PageTitle>
+@code {
 
-<h1>Hello, world!</h1>
+    public class GraphQueryModel
+    {
+        public string BaseAddress { get; set; } = "https://graph.microsoft.com/v1.0";
+        public string RequestUri { get; set; } = "/me";
+        public string Scopes { get; set; } = "User.Read";
+        public bool QueryInProgress { get; set; }
+    }
 
-Welcome to your new app.
+    private GraphQueryModel Model = new GraphQueryModel();
 
+    private string? ResultContent;
+    private Exception? QueryException;
+
+    private async Task SendRequestAsync()
+    {
+        this.ResultContent = null;
+        this.QueryException = null;
+        this.Model.QueryInProgress = true;
+        this.StateHasChanged();
+
+        try
+        {
+            var scopesArr = this.Model.Scopes.Split(",", options: StringSplitOptions.RemoveEmptyEntries);
+            using(var request = await this.RequestFactory.CreateGetRequestAsync($"{this.Model.BaseAddress}{this.Model.RequestUri}", scopesArr))
+            {
+                using(var response = await this.HttpClient.SendAsync(request))
+                {
+                    if(response.IsSuccessStatusCode)
+                    {
+                        this.ResultContent = await response.Content.ReadAsStringAsync();
+                    }
+                }
+            }
+        }
+        finally
+        {
+            this.Model.QueryInProgress = false;
+            this.StateHasChanged();
+        }
+    }
+
+    private Dictionary<string, object> GetButtonAttributes()
+    {
+        var attribs = new Dictionary<string, object>();
+        if (this.Model.QueryInProgress)
+        {
+            attribs.Add("disabled", "disabled");
+        }
+        return attribs;
+    }
+}
+
+<PageTitle>Microsoft Graph Access Sample</PageTitle>
+
+<h1>Microsoft Graph Request Builder</h1>
+
+<EditForm Model=this.Model>
+    <div class="input-group mb-3">
+        <span class="input-group-text">Scopes</span>
+        <InputText id="scopes" class="form-control" @bind-Value=this.Model.Scopes titlt="Comma-separated list of scopes that are required to access the request URI below."></InputText>
+    </div>
+    <div class="input-group mb-3">
+        <span class="input-group-text">URI</span>
+        <InputSelect id="version-select" class="form-select" @bind-Value=this.Model.BaseAddress>
+            <option value="https://graph.microsoft.com/v1.0">https://graph.microsoft.com/v1.0</option>
+            <option value="https://graph.microsoft.com/beta">https://graph.microsoft.com/beta</option>
+        </InputSelect>
+        <InputText id="request-uri" class="form-control" @bind-Value=this.Model.RequestUri></InputText>
+        
+        <button class="btn btn-primary" @attributes=this.GetButtonAttributes() @onclick="async (e) => { await this.SendRequestAsync(); }">Send</button>
+    </div>
+</EditForm>
+
+@if(this.ResultContent?.Length > 0)
+{
+    <h2>Result</h2>
+    <pre>@this.ResultContent</pre>
+}
