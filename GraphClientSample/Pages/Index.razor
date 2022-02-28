@@ -19,6 +19,8 @@
     private int? ResponseStatus;
     private Exception? ResponseException;
     private string? UserName;
+    private string? AccessToken;
+    private string? IdToken;
 
     private async Task SendRequestAsync()
     {
@@ -69,6 +71,9 @@
         {
             var token = await this.MsalService.AcquireTokenSilentAsync(fallbackToDefaultLoginHint: true);
             this.UserName = token?.Account?.UserName;
+            this.AccessToken = token?.AccessToken;
+            this.IdToken = token?.IdToken;
+
             if(token?.Scopes?.Count > 0)
             {
                 this.Model.Scopes = string.Join(",", token.Scopes);
@@ -128,6 +133,13 @@
     <small>Status code: @this.ResponseStatus</small>
     <div class="mt-3">
         <code>@this.ResponseContent</code>
+    </div>
+    <div class="mt-3">
+        <h3>Tokens</h3>
+        <ul>
+            <li><a href="https://jwt.ms/#access_token=@this.AccessToken" target="_blank">Access Token</a></li>
+            <li><a href="https://jwt.ms/#id_token=@this.IdToken" target="_blank">Id Token</a></li>
+        </ul>
     </div>
 }
 else if(null != this.ResponseException)
